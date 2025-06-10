@@ -1,16 +1,3 @@
-"""
-Let the app be use command interface as follow:
-        ● Print a menu for the user with the operation he can do and the key word to
-        enter for running an operation, for example:
-        ● For adding new employee enter “add”
-        If manager press “m”/ if employee press ‘e’
-        Please insert data
-        Name:>>
-        Age:>>
-        And so on.
-        ● The final option in the menu should be q for exiting the program
-"""
-
 import psycopg2
 
 #  connect to the data base
@@ -181,6 +168,73 @@ class Employee(DBModel):
 #     salary=22000,
 # )
 # emp.save()
-Employee.list_all()
-Employee.get_by_pk(1)
-Employee.get(first_name="bb")
+# Employee.list_all()
+# Employee.get_by_pk(1)
+# Employee.get(first_name="bb")
+"""
+Let the app be use command interface as follow:
+        ● Print a menu for the user with the operation he can do and the key word to
+        enter for running an operation, for example:
+        ● For adding new employee enter “add”
+        If manager press “m”/ if employee press ‘e’
+        Please insert data
+        Name:>>
+        Age:>>
+        And so on.
+        ● The final option in the menu should be q for exiting the program
+"""
+
+
+def main():
+    while True:
+        print("Menu:")
+        print("1. Add Employee (add)")
+        print("2. List All Employees (list)")
+        print("3. Get Employee by ID (get)")
+        print("4. Exit (q)")
+
+        choice = input("Enter your choice: ").strip().lower()
+
+        if choice == "add":
+            try:
+                first_name = input("First Name: ")
+                last_name = input("Last Name: ")
+                age = int(input("Age: "))
+                department = input("Department: ")
+                salary = float(input("Salary: "))
+                emp = Employee(
+                    first_name=first_name,
+                    last_name=last_name,
+                    age=age,
+                    department=department,
+                    salary=salary,
+                )
+                emp.save()
+                print("Employee added successfully.")
+            except ValueError as e:
+                print(f"Error: {e}. Please enter valid data.")
+                continue
+
+        elif choice == "list":
+            Employee.list_all()
+
+        elif choice == "get":
+            try:
+                emp_id = int(input("Enter Employee ID: "))
+                employee = Employee.get_by_pk(emp_id)
+                if employee:
+                    print(f"Employee Details: {employee}")
+                else:
+                    print("Employee not found.")
+            except ValueError:
+                print("Invalid ID. Please enter a valid integer.")
+
+        elif choice == "q":
+            break
+
+        else:
+            print("Invalid choice, please try again.")
+
+
+if __name__ == "__main__":
+    main()
