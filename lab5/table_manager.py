@@ -25,6 +25,7 @@ class DBModel:
     _primary_key: str = "id"
     _field_definations: dict = {}
     _table_name: str
+    _placeholder = "%18s |"
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -101,20 +102,28 @@ class DBModel:
         return fields_names
 
     @classmethod
-    def get(cls, **kwargs) -> list:
+    def _create_instance_from_db_row(cls, row):
+        """Convert database row to model instance"""
+
+        fields = cls._get_fields()
+        kwargs = {field: value for field, value in zip(fields, row)}
+        return cls(**kwargs)
+
+    @classmethod
+    def get(cls, **kwargs):
         """get  table record"""
         field_name = cls._primary_key
         for k in kwargs:
             if k not in cls._get_fields():
                 raise ValueError(f"Invalid field name {k}")
             field_name = k
+        q = f"SELECT * FROM {cls._get_table_name()} WHERE {field_name}='{kwargs[field_name]}' ;"
+
         with cls._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT * FROM {cls._get_table_name()} WHERE {field_name}='{kwargs[field_name]}' ;"
-                )
-                v = cursor.fetchall()
-                return v
+                cursor.execute(q)
+                v = [cls._create_instance_from_db_row(row) for row in cursor.fetchall()]
+                return v if len(v) > 0 else None
 
     @classmethod
     def get_by_pk(cls, pk):
@@ -124,8 +133,13 @@ class DBModel:
                 cursor.execute(
                     f"SELECT * FROM {cls._get_table_name()} WHERE {cls._primary_key}='{pk}' ;"
                 )
-                v = cursor.fetchone()
-                return v
+
+                return (
+                    cls._create_instance_from_db_row(cursor.fetchone())
+                    if cursor.rowcount > 0
+                    else None
+                )
+        return None
 
     @classmethod
     def list_all(cls):
@@ -133,40 +147,84 @@ class DBModel:
         with cls._get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(f"SELECT * FROM {cls._get_table_name()};")
-                v = cursor.fetchall()
-                print(type(v))
+                v = [cls._create_instance_from_db_row(row) for row in cursor.fetchall()]
+                cls._print_table_header()
+                for e in v:
+                    e.show(with_header=False)
+
+    @classmethod
+    def _print_table_header(cls):
+        fields_names = cls._get_fields()
+        placeholder = cls._placeholder * len(fields_names)
+        print(placeholder % tuple(fields_names))
+        print(f"{'=' * (18+2) * len(fields_names)}")
 
     def save(self):
         fields_names = [
             f_name for f_name in self._get_fields() if f_name != self._primary_key
         ]
-        q = f"""
-INSERT INTO {self._get_table_name()} ({', '.join(fields_names)}) VALUES ( '{("', '".join([str(getattr(self, fn)) for fn in fields_names]))}' ) ;
-"""
+        q = f"INSERT INTO {self._get_table_name()} ({', '.join(fields_names)}) VALUES ( '{("', '".join([str(getattr(self, fn)) for fn in fields_names]))}' ) ;"
         print(q)
 
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(q)
+                print(cursor.execute(q))
             conn.commit()
 
+    def delete(self):
+        """Delete the record"""
+        q = f"DELETE FROM {self._get_table_name()} WHERE {self._primary_key}='{getattr(self, self._primary_key)}';"
+        print(q)
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                print(cursor.execute(q))
+            conn.commit()
 
-class Employee(DBModel):
-    first_name: str
-    last_name: str
-    age: int
-    department: str
-    salary: float
-    managed_department: str = ""
+    def update(self, **kwargs):
+        """Update the record"""
+        fields = list(kwargs.items()) if len(kwargs.items()) > 0 else None
+        if fields:
+            (field_name, new_value) = fields[0]
+            if field_name not in self._get_fields():
+                raise ValueError(f"Invalid field name {field_name}")
+            q = f"UPDATE {self._get_table_name()} SET {field_name}='{new_value}' WHERE {self._primary_key}='{getattr(self, self._primary_key)}';"
+            print(q)
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    print(cursor.execute(q))
+                conn.commit()
+            setattr(self, field_name, new_value)
+
+    def show(self, with_header: bool = True):
+        """Show the record"""
+        is_manager = (
+            hasattr(self, "managed_department")
+            and getattr(self, "managed_department") != ""
+        )
+        fields_names = self._get_fields()
+        placeholder = self._placeholder * len(fields_names)
+        values = [getattr(self, fn) for fn in fields_names]
+        if is_manager:
+            values[-2] = "confidential"
+        if with_header:
+            self._print_table_header()
+        print(placeholder % tuple(values))
+        print(f"{'_' * ((20) * len(fields_names)-1)}|")
 
 
-# emp = Employee(
-#     first_name="bb",
-#     last_name="elbanna",
-#     age=22,
-#     department="dprt1",
-#     salary=22000,
+# emp = Employee._create_instance_from_db_row(
+#     (
+#         55,
+#         "bb",
+#         "elbanna",
+#         22,
+#         "dprt1",
+#         20000,
+#     )
 # )
+
+# emp.show()
+
 # emp.save()
 # Employee.list_all()
 # Employee.get_by_pk(1)
@@ -183,58 +241,3 @@ Let the app be use command interface as follow:
         And so on.
         ● The final option in the menu should be q for exiting the program
 """
-
-
-def main():
-    while True:
-        print("Menu:")
-        print("1. Add Employee (add)")
-        print("2. List All Employees (list)")
-        print("3. Get Employee by ID (get)")
-        print("4. Exit (q)")
-
-        choice = input("Enter your choice: ").strip().lower()
-
-        if choice == "add":
-            try:
-                first_name = input("First Name: ")
-                last_name = input("Last Name: ")
-                age = int(input("Age: "))
-                department = input("Department: ")
-                salary = float(input("Salary: "))
-                emp = Employee(
-                    first_name=first_name,
-                    last_name=last_name,
-                    age=age,
-                    department=department,
-                    salary=salary,
-                )
-                emp.save()
-                print("Employee added successfully.")
-            except ValueError as e:
-                print(f"Error: {e}. Please enter valid data.")
-                continue
-
-        elif choice == "list":
-            Employee.list_all()
-
-        elif choice == "get":
-            try:
-                emp_id = int(input("Enter Employee ID: "))
-                employee = Employee.get_by_pk(emp_id)
-                if employee:
-                    print(f"Employee Details: {employee}")
-                else:
-                    print("Employee not found.")
-            except ValueError:
-                print("Invalid ID. Please enter a valid integer.")
-
-        elif choice == "q":
-            break
-
-        else:
-            print("Invalid choice, please try again.")
-
-
-if __name__ == "__main__":
-    main()
